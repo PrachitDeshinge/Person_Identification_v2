@@ -2,6 +2,7 @@ import cv2
 from person_detection import PersonDetector
 from person_tracking import PersonTracker
 from data_manager import DataBuffer
+import time
 
 if __name__ == "__main__":
     cap = cv2.VideoCapture("../v_0/input/3c.mp4")  # Use video file path if needed
@@ -9,8 +10,9 @@ if __name__ == "__main__":
     tracker = PersonTracker()
     buffer = DataBuffer()
 
+    start_time = time.time()
     frame_id = 0
-    while cap.isOpened():
+    while cap.isOpened() and frame_id < 600:
         ret, frame = cap.read()
         if not ret:
             break
@@ -29,5 +31,7 @@ if __name__ == "__main__":
 
         frame_id += 1
 
+    end_time = time.time()
+    print(f"Processed {frame_id} frames in {end_time - start_time:.2f} seconds.\n FPS: {frame_id / (end_time - start_time):.2f}")
     cap.release()
     cv2.destroyAllWindows()

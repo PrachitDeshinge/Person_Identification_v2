@@ -1,0 +1,35 @@
+# All type of cache files
+*.pyc
+*.pyo
+__pycache__/
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# VS Code settings
+.vscode/
+# Temporary files
+*.tmp
+*.temp
+# Logs
+*.log
+# Environment files
+.env
+# Pytest cache
+.pytest_cache/
+
+# All type of Model files
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.weights
+
+# All type of video files
+*.mp4
+
+# All type of image files
+*.jpg
+*.jpeg
+*.png
+
+# All type of notebook files
+*.ipynb
