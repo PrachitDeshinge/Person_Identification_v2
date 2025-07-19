@@ -57,14 +57,12 @@ class CorrectedPatchEmbedding(nn.Module):
     def __init__(self, in_channels, embed_dim):
         super().__init__()
         # 1. The Convolutional Stem
-        # The first error log showed this layer outputs 64 channels.
         self.conv = nn.Sequential(OrderedDict([
             ('0', nn.Conv2d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)),
             ('relu', nn.ReLU(inplace=True))
         ]))
 
         # 2. The Final Projection Layer
-        # The final error log showed this layer takes 64 channels as input and uses an (8,8) kernel.
         self.proj = nn.Conv2d(64, embed_dim, kernel_size=(8, 8), stride=(8, 8))
 
     def forward(self, x):

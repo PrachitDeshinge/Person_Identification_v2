@@ -2,23 +2,32 @@ import cv2
 from person_detection import PersonDetector
 from person_tracking import PersonTracker
 from data_manager import DataBuffer
+from profiler import PipelineProfiler
 import time
+import psutil
+import os
 
 if __name__ == "__main__":
     cap = cv2.VideoCapture("../v_0/input/3c.mp4")  # Use video file path if needed
     detector = PersonDetector()
     tracker = PersonTracker()
     buffer = DataBuffer()
+    profiler = PipelineProfiler()
 
-    start_time = time.time()
     frame_id = 0
-    while cap.isOpened() and frame_id < 600:
+    profiler.start_frame_processing()
+    while cap.isOpened() and frame_id < 500:
         ret, frame = cap.read()
         if not ret:
             break
 
+        profiler.start("Detection")
         detector.detect_and_store(frame, frame_id, buffer)
-        tracker.update_tracks(frame_id, buffer)
+        profiler.stop("Detection")
+
+        profiler.start("Tracking")
+        tracker.update_tracks(frame_id, buffer, profiler)
+        profiler.stop("Tracking")
 
         tracks = buffer.get_tracks(frame_id)
         for t in tracks:
@@ -31,7 +40,15 @@ if __name__ == "__main__":
 
         frame_id += 1
 
-    end_time = time.time()
-    print(f"Processed {frame_id} frames in {end_time - start_time:.2f} seconds.\n FPS: {frame_id / (end_time - start_time):.2f}")
+    profiler.end_frame_processing(frame_id)
+    print(profiler.get_summary())
+
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    print(f"\n--- Memory Usage ---")
+    print(f"RSS (Resident Set Size): {memory_info.rss / (1024 * 1024):.2f} MB")
+    print(f"VMS (Virtual Memory Size): {memory_info.vms / (1024 * 1024):.2f} MB")
+    print(f"--- End of Memory Usage ---")
+
     cap.release()
     cv2.destroyAllWindows()
