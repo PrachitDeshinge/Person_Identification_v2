@@ -1,7 +1,7 @@
 import torch
 import cv2
 from ultralytics import YOLO
-from data_manager import DataBuffer
+from utils.data_manager import DataBuffer
 
 class PersonDetector:
     def __init__(self, model_path='../weights/yolov8n.pt'):

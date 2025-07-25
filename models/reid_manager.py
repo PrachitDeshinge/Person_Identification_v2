@@ -1,7 +1,7 @@
 import torch
 from torchvision import transforms
 from PIL import Image
-from vit_model import CompleteVisionTransformer
+from models.vit_model import CompleteVisionTransformer
 
 class ReIDManager:
     def __init__(self, similarity_threshold=0.7, lost_track_buffer=30):

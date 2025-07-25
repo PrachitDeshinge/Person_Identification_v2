@@ -1,8 +1,8 @@
 import cv2
-from person_detection import PersonDetector
-from person_tracking import PersonTracker
-from data_manager import DataBuffer
-from profiler import PipelineProfiler
+from tracking.person_detection import PersonDetector
+from tracking.person_tracking import PersonTracker
+from utils.data_manager import DataBuffer
+from utils.profiler import PipelineProfiler
 import time
 import psutil
 import os

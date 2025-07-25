@@ -1,8 +1,8 @@
 from boxmot import ByteTrack
 import torch
 import numpy as np
-from data_manager import DataBuffer
-from reid_manager import ReIDManager
+from utils.data_manager import DataBuffer
+from models.reid_manager import ReIDManager
 
 class PersonTracker:
     def __init__(self):
