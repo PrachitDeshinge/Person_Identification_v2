@@ -4,6 +4,8 @@ import numpy as np
 from utils.data_manager import DataBuffer
 from models.reid_manager import ReIDManager
 
+RECHECK_INTERVAL = 10  # frames
+
 class PersonTracker:
     def __init__(self):
         self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -12,6 +14,7 @@ class PersonTracker:
         self.active_track_ids = set()
         self.track_id_map = {}
         self.next_final_id = 1
+        self.recheck_counter = {}
 
     def update_tracks(self, frame_id, buffer: DataBuffer, profiler):
         detections = buffer.get_detections(frame_id)
@@ -41,49 +44,50 @@ class PersonTracker:
             if raw_id not in self.track_id_map:
                 # New raw ID from ByteTrack.
                 crop = frame[y1:y2, x1:x2]
-                
-                profiler.start("ReID_Extract_Feature")
                 feature = self.reid_manager.extract_feature(crop)
-                profiler.stop("ReID_Extract_Feature")
-
-                profiler.start("ReID_Match_Feature")
                 matched_id = self.reid_manager.match_feature(feature)
-                profiler.stop("ReID_Match_Feature")
 
                 if matched_id is not None:
-                    # This is a re-identified track.
                     final_id = matched_id
-                    # print(f"Re-identified raw track {raw_id} as existing ID {final_id}")
                 else:
-                    # This is a truly new track.
                     final_id = self.next_final_id
                     self.next_final_id += 1
                 
                 self.track_id_map[raw_id] = final_id
                 self.reid_manager.register_feature(final_id, feature)
-
+                self.recheck_counter[final_id] = 0
             else:
-                # This raw ID has been seen before. Use its mapped final ID.
                 final_id = self.track_id_map[raw_id]
-            
+                self.recheck_counter[final_id] = self.recheck_counter.get(final_id, 0) + 1
+
+                if self.recheck_counter[final_id] % RECHECK_INTERVAL == 0:
+                    crop = frame[y1:y2, x1:x2]
+                    feature = self.reid_manager.extract_feature(crop)
+                    
+                    corrected_id = self.reid_manager.check_for_swap(feature, final_id)
+                    if corrected_id != final_id:
+                        # A high-confidence swap was detected. Correct the mapping.
+                        self.track_id_map[raw_id] = corrected_id
+                        final_id = corrected_id
+                    
+                    # Update the feature vector for the correct ID
+                    self.reid_manager.update_feature(final_id, feature)
+
             final_tracks.append([x1, y1, x2, y2, final_id])
             final_current_track_ids.add(final_id)
 
-        # Identify which FINAL IDs are no longer present.
-        profiler.start("ReID_Handle_Lost_Tracks")
+        # --- Track Lifecycle Management ---
         lost_final_ids = self.active_track_ids - final_current_track_ids
         self.reid_manager.handle_lost_tracks(lost_final_ids, frame_id)
-        profiler.stop("ReID_Handle_Lost_Tracks")
+        for final_id in lost_final_ids:
+            if final_id in self.recheck_counter:
+                del self.recheck_counter[final_id]
 
-        profiler.start("ReID_Cleanup_Lost_Gallery")
         self.reid_manager.cleanup_lost_gallery(frame_id)
-        profiler.stop("ReID_Cleanup_Lost_Gallery")
 
-        # Clean up the map from raw IDs that are no longer tracked by ByteTrack.
         raw_lost_ids = set(self.track_id_map.keys()) - raw_current_track_ids
         for raw_id in raw_lost_ids:
             del self.track_id_map[raw_id]
 
-        # Update the set of active FINAL IDs for the next frame.
         self.active_track_ids = final_current_track_ids
         buffer.store_tracks(frame_id, final_tracks)

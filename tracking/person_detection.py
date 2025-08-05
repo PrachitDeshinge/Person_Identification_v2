@@ -4,7 +4,7 @@ from ultralytics import YOLO
 from utils.data_manager import DataBuffer
 
 class PersonDetector:
-    def __init__(self, model_path='../weights/yolov8n.pt'):
+    def __init__(self, model_path='../weights/yolo11m.pt'):
         self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = YOLO(model_path,verbose=False).to(self.device)
 

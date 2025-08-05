@@ -4,13 +4,15 @@ from PIL import Image
 from models.vit_model import CompleteVisionTransformer
 
 class ReIDManager:
-    def __init__(self, similarity_threshold=0.7, lost_track_buffer=30):
+    def __init__(self, similarity_threshold=0.7, lost_track_buffer=60, feature_update_alpha=0.9, swap_confidence_margin=0.2):
         self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = self._load_model()
         self.transform = self._get_transform()
         
         self.similarity_threshold = similarity_threshold
         self.lost_track_buffer = lost_track_buffer
+        self.feature_update_alpha = feature_update_alpha
+        self.swap_confidence_margin = swap_confidence_margin
 
         self.active_gallery = {}
         self.lost_gallery = {}
@@ -51,10 +53,45 @@ class ReIDManager:
         
         return best_match_id
 
+    def check_for_swap(self, new_feature, current_id):
+        if current_id not in self.active_gallery:
+            return current_id
+
+        own_feature = self.active_gallery[current_id]
+        own_similarity = torch.nn.functional.cosine_similarity(new_feature, own_feature).item()
+
+        best_other_id = None
+        max_other_similarity = -1
+
+        for other_id, other_feature in self.active_gallery.items():
+            if other_id == current_id:
+                continue
+            similarity = torch.nn.functional.cosine_similarity(new_feature, other_feature).item()
+            if similarity > max_other_similarity:
+                max_other_similarity = similarity
+                best_other_id = other_id
+
+        # A swap is only detected if the best other match is significantly better.
+        if max_other_similarity > own_similarity + self.swap_confidence_margin:
+            return best_other_id
+        
+        return current_id
+
+    
+
     def register_feature(self, final_id, feature):
         if final_id in self.lost_gallery:
             del self.lost_gallery[final_id]
         self.active_gallery[final_id] = feature
+
+    def update_feature(self, final_id, new_feature):
+        if final_id in self.active_gallery:
+            old_feature = self.active_gallery[final_id]
+            # Use a moving average to update the feature vector
+            updated_feature = self.feature_update_alpha * old_feature + (1 - self.feature_update_alpha) * new_feature
+            self.active_gallery[final_id] = updated_feature / torch.norm(updated_feature) # Normalize
+        else:
+            self.register_feature(final_id, new_feature)
 
     def handle_lost_tracks(self, lost_ids, frame_id):
         for track_id in lost_ids:

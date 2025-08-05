@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     frame_id = 0
     profiler.start_frame_processing()
-    while cap.isOpened() and frame_id < 500:
+    while cap.isOpened() and frame_id < 800:
         ret, frame = cap.read()
         if not ret:
             break
