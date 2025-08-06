@@ -1,0 +1,7 @@
+# Configuration for the Person Identification Pipeline
+
+# Re-ID Manager Settings
+REID_SIMILARITY_THRESHOLD = 0.7
+REID_LOST_TRACK_BUFFER = 60
+REID_FEATURE_UPDATE_ALPHA = 0.9
+REID_SWAP_CONFIDENCE_MARGIN = 0.2

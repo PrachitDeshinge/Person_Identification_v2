@@ -38,6 +38,7 @@ if __name__ == "__main__":
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
+        buffer.cleanup(frame_id)
         frame_id += 1
 
     profiler.end_frame_processing(frame_id)

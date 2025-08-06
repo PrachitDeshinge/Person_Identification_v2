@@ -3,6 +3,10 @@ import torch
 import numpy as np
 from utils.data_manager import DataBuffer
 from models.reid_manager import ReIDManager
+from models.u2net import U2NET
+from torchvision import transforms
+from PIL import Image
+import cv2
 
 RECHECK_INTERVAL = 10  # frames
 
@@ -11,10 +15,52 @@ class PersonTracker:
         self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
         self.tracker = ByteTrack(track_thresh=0.5, track_buffer=60, match_thresh=0.8)
         self.reid_manager = ReIDManager()
+
+        # Segmentation model setup
+        self.segmentation_model = U2NET(3, 1)
+        try:
+            self.segmentation_model.load_state_dict(torch.load('../weights/u2net.pth', map_location=self.device))
+            print("[SUCCESS] Segmentation model loaded successfully!")
+        except FileNotFoundError:
+            print("[ERROR] Segmentation model weights not found at '../weights/u2net.pth'. Proceeding without segmentation.")
+            self.segmentation_model = None
+        
+        if self.segmentation_model:
+            self.segmentation_model.to(self.device)
+            self.segmentation_model.eval()
+
+        self.segmentation_transform = transforms.Compose([
+            transforms.Resize((320, 320)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
         self.active_track_ids = set()
         self.track_id_map = {}
         self.next_final_id = 1
         self.recheck_counter = {}
+
+    def segment_and_apply_mask(self, crop):
+        if not self.segmentation_model:
+            return crop
+
+        original_h, original_w, _ = crop.shape
+        image = Image.fromarray(crop).convert("RGB")
+        image_tensor = self.segmentation_transform(image).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            d0, _, _, _, _, _, _ = self.segmentation_model(image_tensor)
+
+        pred = d0[:, 0, :, :]
+        pred = (pred - torch.min(pred)) / (torch.max(pred) - torch.min(pred)) # Normalize
+        pred = pred.squeeze().cpu().numpy()
+        
+        mask = (pred > 0.5).astype(np.uint8)
+        mask_resized = cv2.resize(mask, (original_w, original_h), interpolation=cv2.INTER_NEAREST)
+        
+        # Apply mask
+        masked_crop = cv2.bitwise_and(crop, crop, mask=mask_resized)
+        return masked_crop
 
     def update_tracks(self, frame_id, buffer: DataBuffer, profiler):
         detections = buffer.get_detections(frame_id)
@@ -44,7 +90,8 @@ class PersonTracker:
             if raw_id not in self.track_id_map:
                 # New raw ID from ByteTrack.
                 crop = frame[y1:y2, x1:x2]
-                feature = self.reid_manager.extract_feature(crop)
+                masked_crop = self.segment_and_apply_mask(crop)
+                feature = self.reid_manager.extract_feature(masked_crop)
                 matched_id = self.reid_manager.match_feature(feature)
 
                 if matched_id is not None:
@@ -62,7 +109,8 @@ class PersonTracker:
 
                 if self.recheck_counter[final_id] % RECHECK_INTERVAL == 0:
                     crop = frame[y1:y2, x1:x2]
-                    feature = self.reid_manager.extract_feature(crop)
+                    masked_crop = self.segment_and_apply_mask(crop)
+                    feature = self.reid_manager.extract_feature(masked_crop)
                     
                     corrected_id = self.reid_manager.check_for_swap(feature, final_id)
                     if corrected_id != final_id:

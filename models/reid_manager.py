@@ -2,17 +2,18 @@ import torch
 from torchvision import transforms
 from PIL import Image
 from models.vit_model import CompleteVisionTransformer
+import config
 
 class ReIDManager:
-    def __init__(self, similarity_threshold=0.7, lost_track_buffer=60, feature_update_alpha=0.9, swap_confidence_margin=0.2):
+    def __init__(self):
         self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model = self._load_model()
         self.transform = self._get_transform()
         
-        self.similarity_threshold = similarity_threshold
-        self.lost_track_buffer = lost_track_buffer
-        self.feature_update_alpha = feature_update_alpha
-        self.swap_confidence_margin = swap_confidence_margin
+        self.similarity_threshold = config.REID_SIMILARITY_THRESHOLD
+        self.lost_track_buffer = config.REID_LOST_TRACK_BUFFER
+        self.feature_update_alpha = config.REID_FEATURE_UPDATE_ALPHA
+        self.swap_confidence_margin = config.REID_SWAP_CONFIDENCE_MARGIN
 
         self.active_gallery = {}
         self.lost_gallery = {}
