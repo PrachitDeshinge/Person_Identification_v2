@@ -5,7 +5,7 @@ class DataBuffer:
         self.frames = {}
         self.detections = {}
         self.tracks = {}
-        self.max_buffer_size = config.REID_LOST_TRACK_BUFFER + 10 # Keep a little extra
+        self.max_buffer_size = 70  # Keep reasonable buffer size for memory management
 
     def store_detections(self, frame_id, frame, detections):
         self.frames[frame_id] = frame

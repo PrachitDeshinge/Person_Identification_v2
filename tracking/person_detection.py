@@ -2,14 +2,16 @@ import torch
 import cv2
 from ultralytics import YOLO
 from utils.data_manager import DataBuffer
+import config
 
 class PersonDetector:
-    def __init__(self, model_path='../weights/yolo11s.pt'):
-        self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.model = YOLO(model_path,verbose=False).to(self.device)
+    def __init__(self, model_path: str | None = None):
+        self.device = config.DEVICE
+        weights = model_path or config.YOLO_WEIGHTS
+        self.model = YOLO(weights, verbose=False).to(self.device)
 
     def detect_and_store(self, frame, frame_id, buffer: DataBuffer):
-        results = self.model(frame,verbose=False)[0]
+        results = self.model(frame, verbose=False)[0]
         persons = []
         for box in results.boxes:
             cls = int(box.cls.item())

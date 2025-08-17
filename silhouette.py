@@ -11,19 +11,20 @@ import numpy as np
 import logging
 import torchvision.transforms as transforms
 from PIL import Image
+import config
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-def create_silhouette_extractor(weights_path='../weights/u2net_human_seg.pth'):
+def create_silhouette_extractor(weights_path: str | None = None):
     """
     Creates and prepares a U²-Net model for silhouette extraction.
     This function now also handles moving the model to the correct device.
     """
     try:
-        # 1. Determine the appropriate device
-        device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
+        # 1. Determine the appropriate device from central config
+        device = config.DEVICE
         logger.info(f"Using device: {device.upper()}")
 
         # 2. Load the U²-Net model architecture
@@ -32,7 +33,7 @@ def create_silhouette_extractor(weights_path='../weights/u2net_human_seg.pth'):
         
         # 3. Load the pretrained weights
         # We load to the CPU first, then move the whole model to the target device.
-        model.load_state_dict(torch.load(weights_path, map_location='cpu'))
+        model.load_state_dict(torch.load(weights_path or config.U2NET_WEIGHTS, map_location='cpu'))
         logger.info(f"Pretrained weights loaded from {weights_path}.")
         
         # --- FIX: Move the entire model to the selected device ---
@@ -97,7 +98,7 @@ def extract_silhouette(model, device, input_image):
 if __name__ == "__main__":
     try:
         # Create the silhouette extractor, which now returns the model and device
-        extractor, device = create_silhouette_extractor(weights_path='../weights/clip_market1501.pt')
+        extractor, device = create_silhouette_extractor()
         
         # Load a test image
         # Ensure the image is converted to RGB format, as OpenCV loads in BGR

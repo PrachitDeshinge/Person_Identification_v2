@@ -4,6 +4,7 @@ import torch
 from boxmot import BoostTrack, ByteTrack
 from utils.data_manager import DataBuffer
 import config
+from typing import Optional
 
 
 class PersonTracker:
@@ -16,35 +17,31 @@ class PersonTracker:
 
     def __init__(
         self,
-        reid_weights_path: str | None = None,
+        reid_weights_path: Optional[str] = None,
         # Tuning knobs for BoostTrack (robust preset for crowded/similar uniforms)
-        max_age: int = 90,
-        min_hits: int = 3,
-        det_thresh: float = 0.55,
-        iou_threshold: float = 0.35,
-        lambda_iou: float = 0.45,
-        lambda_mhd: float = 0.25,
-        lambda_shape: float = 0.30,
-        use_dlo_boost: bool = True,
-        use_duo_boost: bool = True,
-        dlo_boost_coef: float = 0.70,
-        s_sim_corr: bool = True,
-        use_rich_s: bool = True,
-        use_sb: bool = True,
-        use_vt: bool = True,
+        max_age: int = config.BT_MAX_AGE,
+        min_hits: int = config.BT_MIN_HITS,
+        det_thresh: float = config.BT_DET_THRESH,
+        iou_threshold: float = config.BT_IOU_THRESHOLD,
+        lambda_iou: float = config.BT_LAMBDA_IOU,
+        lambda_mhd: float = config.BT_LAMBDA_MHD,
+        lambda_shape: float = config.BT_LAMBDA_SHAPE,
+        use_dlo_boost: bool = config.BT_USE_DLO_BOOST,
+        use_duo_boost: bool = config.BT_USE_DUO_BOOST,
+        dlo_boost_coef: float = config.BT_DLO_BOOST_COEF,
+        s_sim_corr: bool = config.BT_S_SIM_CORR,
+        use_rich_s: bool = config.BT_USE_RICH_S,
+        use_sb: bool = config.BT_USE_SB,
+        use_vt: bool = config.BT_USE_VT,
     ):
-        # Select device: prioritize MPS (Apple), then CUDA, else CPU
-        self.device = (
-            'mps' if torch.backends.mps.is_available()
-            else 'cuda' if torch.cuda.is_available()
-            else 'cpu'
-        )
+        # Select device from central config
+        self.device = config.DEVICE
 
         weights_path = Path(reid_weights_path or config.REID_WEIGHTS)
 
         if not weights_path.exists():
             print(f"[BoxMOT] ReID weights not found at: {weights_path}. Falling back to ByteTrack (motion-only).")
-            self.tracker = ByteTrack(track_thresh=det_thresh, track_buffer=int(max_age), match_thresh=0.8)
+            self.tracker = ByteTrack(track_thresh=det_thresh, track_buffer=int(max_age), match_thresh=config.BYTETRACK_MATCH_THRESH)
             return
 
         # Use appearance-aware tracker for higher ID stability

@@ -1,5 +1,6 @@
 import torch
 from u2netcopy import U2NET
+import config
 
 def check_compatibility(model_path, weights_path):
     try:
@@ -37,5 +38,5 @@ def check_compatibility(model_path, weights_path):
 
 if __name__ == "__main__":
     model_path = 'u2netcopy.py'
-    weights_path = '/Users/prachit/Projects/Computer_Vision/Person_Identification/weights/u2net.pth'
+    weights_path = config.U2NET_WEIGHTS
     check_compatibility(model_path, weights_path)

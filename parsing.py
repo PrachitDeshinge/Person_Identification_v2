@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 from pathlib import Path
+import config
 
 # --- Refactoring Note ---
 # The U2NET model architecture has been moved to a separate file `u2net_model.py`
@@ -18,12 +19,12 @@ from models.u2net import U2NET
 class HumanParsingModel:
     """Human Parsing Model using GaitParsing U²-Net implementation"""
     
-    def __init__(self, model_path='../weights/human_parsing.pth', device=None):
+    def __init__(self, model_path: str | None = None, device: str | None = None):
         self.input_height = 144
         self.input_width = 96
         self.transform = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-        self.model_path = model_path
-        self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.model_path = model_path or config.PARSING_WEIGHTS
+        self.device = device or config.DEVICE
         
         # GaitParsing class definitions (7 classes for gait parsing)
         self.get_class_names = [

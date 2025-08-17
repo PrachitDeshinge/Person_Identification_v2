@@ -1,7 +1,3 @@
-import os
-# Ensure MPS ops gracefully fall back to CPU for unsupported operations (e.g., torchvision NMS)
-os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
-
 import cv2
 from tracking.person_detection import PersonDetector
 from tracking.person_tracking import PersonTracker
@@ -9,9 +5,13 @@ from utils.data_manager import DataBuffer
 from utils.profiler import PipelineProfiler
 import time
 import psutil
+import os
+import config  # This will automatically handle MPS fallback setup
 
 if __name__ == "__main__":
-    cap = cv2.VideoCapture("../v_0/input/3c.mp4")  # Use video file path if needed
+    # Input source
+    cap = cv2.VideoCapture(config.INPUT_VIDEO)
+
     detector = PersonDetector()
     tracker = PersonTracker()
     buffer = DataBuffer()
@@ -19,7 +19,8 @@ if __name__ == "__main__":
 
     frame_id = 0
     profiler.start_frame_processing()
-    while cap.isOpened() and frame_id < 800:
+    max_frames = config.MAX_FRAMES if config.MAX_FRAMES and config.MAX_FRAMES > 0 else float('inf')
+    while cap.isOpened() and frame_id < max_frames:
         ret, frame = cap.read()
         if not ret:
             break
