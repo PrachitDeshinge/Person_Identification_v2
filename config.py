@@ -7,6 +7,10 @@ Update values below instead of hardcoding in modules.
 
 from __future__ import annotations
 import os
+
+# Set MPS fallback BEFORE importing torch
+os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+
 import torch
 
 # -----------------------------------
@@ -16,24 +20,41 @@ import torch
 PREFERRED_DEVICE = 'auto'
 
 def _select_device() -> str:
+    """Select the best available device for computation"""
     if PREFERRED_DEVICE != 'auto':
+        if PREFERRED_DEVICE == 'mps' and not torch.backends.mps.is_available():
+            print(f"[WARNING] MPS requested but not available, falling back to CPU")
+            return 'cpu'
+        elif PREFERRED_DEVICE == 'cuda' and not torch.cuda.is_available():
+            print(f"[WARNING] CUDA requested but not available, falling back to CPU")
+            return 'cpu'
         return PREFERRED_DEVICE
-    return (
-        'mps' if torch.backends.mps.is_available()
-        else 'cuda' if torch.cuda.is_available()
-        else 'cpu'
-    )
+    
+    # Auto-select best available device
+    if torch.backends.mps.is_available():
+        return 'mps'
+    elif torch.cuda.is_available():
+        return 'cuda'
+    else:
+        return 'cpu'
 
 def setup_mps_fallback():
-    """Setup MPS fallback only when MPS is available and being used"""
+    """Setup MPS fallback for unsupported operations"""
     device = _select_device()
     if device == 'mps' and torch.backends.mps.is_available():
-        os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+        # Fallback is already set at module level, just return status
         return True
     return False
 
 DEVICE: str = _select_device()
 MPS_FALLBACK_ENABLED = setup_mps_fallback()
+
+print(f"[CONFIG] Selected device: {DEVICE}")
+if MPS_FALLBACK_ENABLED:
+    print("[CONFIG] MPS fallback enabled for unsupported operations")
+
+# Headless Flag
+HEADLESS = True  # Set to True for headless mode (no GUI), False for GUI display
 
 # -----------------------------------
 # Common paths

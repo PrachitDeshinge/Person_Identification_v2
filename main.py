@@ -1,3 +1,4 @@
+import config  # This will automatically handle MPS fallback setup
 import cv2
 from tracking.person_detection import PersonDetector
 from tracking.person_tracking import PersonTracker
@@ -6,7 +7,6 @@ from utils.profiler import PipelineProfiler
 import time
 import psutil
 import os
-import config  # This will automatically handle MPS fallback setup
 
 if __name__ == "__main__":
     # Input source
@@ -38,9 +38,16 @@ if __name__ == "__main__":
             x1, y1, x2, y2, track_id = int(t[0]), int(t[1]), int(t[2]), int(t[3]), int(t[4])
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, f'ID: {track_id}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        cv2.imshow("Tracking", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+        
+        # Only show GUI if not in headless mode
+        if not config.HEADLESS:
+            cv2.imshow("Tracking", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        else:
+            # In headless mode, optionally save frames or just process
+            if frame_id % 100 == 0:  # Print progress every 100 frames
+                print(f"📊 Processed frame {frame_id}, found {len(tracks)} tracks")
 
         buffer.cleanup(frame_id)
         frame_id += 1
@@ -56,4 +63,11 @@ if __name__ == "__main__":
     print(f"--- End of Memory Usage ---")
 
     cap.release()
-    cv2.destroyAllWindows()
+    if not config.HEADLESS:
+        cv2.destroyAllWindows()
+    
+    print(f"🎬 Processing completed - {frame_id} frames processed")
+    if config.HEADLESS:
+        print("🖥️  Ran in headless mode (no GUI)")
+    else:
+        print("🖼️  Ran with GUI display")
