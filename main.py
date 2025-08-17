@@ -1,3 +1,7 @@
+import os
+# Ensure MPS ops gracefully fall back to CPU for unsupported operations (e.g., torchvision NMS)
+os.environ.setdefault('PYTORCH_ENABLE_MPS_FALLBACK', '1')
+
 import cv2
 from tracking.person_detection import PersonDetector
 from tracking.person_tracking import PersonTracker
@@ -5,7 +9,6 @@ from utils.data_manager import DataBuffer
 from utils.profiler import PipelineProfiler
 import time
 import psutil
-import os
 
 if __name__ == "__main__":
     cap = cv2.VideoCapture("../v_0/input/3c.mp4")  # Use video file path if needed

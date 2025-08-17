@@ -22,6 +22,7 @@ __pycache__/
 *.ckpt
 *.h5
 *.weights
+*.DS_Store
 
 # All type of video files
 *.mp4

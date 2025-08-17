@@ -1,68 +1,76 @@
-from boxmot import ByteTrack
-import torch
+from pathlib import Path
 import numpy as np
+import torch
+from boxmot import BoostTrack, ByteTrack
 from utils.data_manager import DataBuffer
-from models.reid_manager import ReIDManager
-from models.u2net import U2NET
-from torchvision import transforms
-from PIL import Image
-import cv2
+import config
 
-RECHECK_INTERVAL = 10  # frames
 
 class PersonTracker:
-    def __init__(self):
-        self.device = 'mps' if torch.backends.mps.is_available() else 'cuda' if torch.cuda.is_available() else 'cpu'
-        self.tracker = ByteTrack(track_thresh=0.5, track_buffer=60, match_thresh=0.8)
-        self.reid_manager = ReIDManager()
+    """
+    Person tracker using BoxMOT built-in trackers.
 
-        # Segmentation model setup
-        self.segmentation_model = U2NET(3, 1)
-        try:
-            self.segmentation_model.load_state_dict(torch.load('../weights/u2net.pth', map_location=self.device))
-            print("[SUCCESS] Segmentation model loaded successfully!")
-        except FileNotFoundError:
-            print("[ERROR] Segmentation model weights not found at '../weights/u2net.pth'. Proceeding without segmentation.")
-            self.segmentation_model = None
-        
-        if self.segmentation_model:
-            self.segmentation_model.to(self.device)
-            self.segmentation_model.eval()
+    - Prefers BoostTrack (motion + appearance) when OSNet ReID weights are available.
+    - Falls back to ByteTrack (motion-only) when ReID weights are missing.
+    """
 
-        self.segmentation_transform = transforms.Compose([
-            transforms.Resize((320, 320)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
+    def __init__(
+        self,
+        reid_weights_path: str | None = None,
+        # Tuning knobs for BoostTrack (robust preset for crowded/similar uniforms)
+        max_age: int = 90,
+        min_hits: int = 3,
+        det_thresh: float = 0.55,
+        iou_threshold: float = 0.35,
+        lambda_iou: float = 0.45,
+        lambda_mhd: float = 0.25,
+        lambda_shape: float = 0.30,
+        use_dlo_boost: bool = True,
+        use_duo_boost: bool = True,
+        dlo_boost_coef: float = 0.70,
+        s_sim_corr: bool = True,
+        use_rich_s: bool = True,
+        use_sb: bool = True,
+        use_vt: bool = True,
+    ):
+        # Select device: prioritize MPS (Apple), then CUDA, else CPU
+        self.device = (
+            'mps' if torch.backends.mps.is_available()
+            else 'cuda' if torch.cuda.is_available()
+            else 'cpu'
+        )
 
-        self.active_track_ids = set()
-        self.track_id_map = {}
-        self.next_final_id = 1
-        self.recheck_counter = {}
+        weights_path = Path(reid_weights_path or config.REID_WEIGHTS)
 
-    def segment_and_apply_mask(self, crop):
-        if not self.segmentation_model:
-            return crop
+        if not weights_path.exists():
+            print(f"[BoxMOT] ReID weights not found at: {weights_path}. Falling back to ByteTrack (motion-only).")
+            self.tracker = ByteTrack(track_thresh=det_thresh, track_buffer=int(max_age), match_thresh=0.8)
+            return
 
-        original_h, original_w, _ = crop.shape
-        image = Image.fromarray(crop).convert("RGB")
-        image_tensor = self.segmentation_transform(image).unsqueeze(0).to(self.device)
-
-        with torch.no_grad():
-            d0, _, _, _, _, _, _ = self.segmentation_model(image_tensor)
-
-        pred = d0[:, 0, :, :]
-        pred = (pred - torch.min(pred)) / (torch.max(pred) - torch.min(pred)) # Normalize
-        pred = pred.squeeze().cpu().numpy()
-        
-        mask = (pred > 0.5).astype(np.uint8)
-        mask_resized = cv2.resize(mask, (original_w, original_h), interpolation=cv2.INTER_NEAREST)
-        
-        # Apply mask
-        masked_crop = cv2.bitwise_and(crop, crop, mask=mask_resized)
-        return masked_crop
+        # Use appearance-aware tracker for higher ID stability
+        print(f"[BoxMOT] Using BoostTrack with ReID weights at: {weights_path}")
+        self.tracker = BoostTrack(
+            reid_weights=weights_path,
+            device=self.device,
+            half=(self.device == 'cuda'),
+            max_age=max_age,
+            min_hits=min_hits,
+            det_thresh=det_thresh,
+            iou_threshold=iou_threshold,
+            lambda_iou=lambda_iou,
+            lambda_mhd=lambda_mhd,
+            lambda_shape=lambda_shape,
+            use_dlo_boost=use_dlo_boost,
+            use_duo_boost=use_duo_boost,
+            dlo_boost_coef=dlo_boost_coef,
+            s_sim_corr=s_sim_corr,
+            use_rich_s=use_rich_s,
+            use_sb=use_sb,
+            use_vt=use_vt,
+        )
 
     def update_tracks(self, frame_id, buffer: DataBuffer, profiler):
+        # Prepare detections in BoxMOT format: M x [x1, y1, x2, y2, conf, cls]
         detections = buffer.get_detections(frame_id)
         frame = buffer.get_frame(frame_id)
 
@@ -70,72 +78,22 @@ class PersonTracker:
         for det in detections:
             x1, y1, x2, y2 = det['bbox']
             conf = det['conf']
-            class_id = 0  # person class
-            dets_for_tracking.append([x1, y1, x2, y2, conf, class_id])
+            cls = 0  # person class
+            dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
 
-        dets_array = np.array(dets_for_tracking, dtype=np.float32) if dets_for_tracking else np.empty((0, 6), dtype=np.float32)
-        
-        profiler.start("ByteTrack_Update")
-        raw_tracks = self.tracker.update(dets_array, frame)
-        profiler.stop("ByteTrack_Update")
+        dets_array = (
+            np.array(dets_for_tracking, dtype=np.float32)
+            if dets_for_tracking else np.empty((0, 6), dtype=np.float32)
+        )
+
+        # Track update; BoxMOT returns M x [x1,y1,x2,y2,id,conf,cls,ind]
+        profiler.start("BoxMOT_Update")
+        results = self.tracker.update(dets_array, frame)
+        profiler.stop("BoxMOT_Update")
 
         final_tracks = []
-        final_current_track_ids = set()
-        raw_current_track_ids = set()
+        for t in results:
+            x1, y1, x2, y2, track_id = int(t[0]), int(t[1]), int(t[2]), int(t[3]), int(t[4])
+            final_tracks.append([x1, y1, x2, y2, track_id])
 
-        for t in raw_tracks:
-            x1, y1, x2, y2, raw_id = map(int, t[:5])
-            raw_current_track_ids.add(raw_id)
-
-            if raw_id not in self.track_id_map:
-                # New raw ID from ByteTrack.
-                crop = frame[y1:y2, x1:x2]
-                masked_crop = self.segment_and_apply_mask(crop)
-                feature = self.reid_manager.extract_feature(masked_crop)
-                matched_id = self.reid_manager.match_feature(feature)
-
-                if matched_id is not None:
-                    final_id = matched_id
-                else:
-                    final_id = self.next_final_id
-                    self.next_final_id += 1
-                
-                self.track_id_map[raw_id] = final_id
-                self.reid_manager.register_feature(final_id, feature)
-                self.recheck_counter[final_id] = 0
-            else:
-                final_id = self.track_id_map[raw_id]
-                self.recheck_counter[final_id] = self.recheck_counter.get(final_id, 0) + 1
-
-                if self.recheck_counter[final_id] % RECHECK_INTERVAL == 0:
-                    crop = frame[y1:y2, x1:x2]
-                    masked_crop = self.segment_and_apply_mask(crop)
-                    feature = self.reid_manager.extract_feature(masked_crop)
-                    
-                    corrected_id = self.reid_manager.check_for_swap(feature, final_id)
-                    if corrected_id != final_id:
-                        # A high-confidence swap was detected. Correct the mapping.
-                        self.track_id_map[raw_id] = corrected_id
-                        final_id = corrected_id
-                    
-                    # Update the feature vector for the correct ID
-                    self.reid_manager.update_feature(final_id, feature)
-
-            final_tracks.append([x1, y1, x2, y2, final_id])
-            final_current_track_ids.add(final_id)
-
-        # --- Track Lifecycle Management ---
-        lost_final_ids = self.active_track_ids - final_current_track_ids
-        self.reid_manager.handle_lost_tracks(lost_final_ids, frame_id)
-        for final_id in lost_final_ids:
-            if final_id in self.recheck_counter:
-                del self.recheck_counter[final_id]
-
-        self.reid_manager.cleanup_lost_gallery(frame_id)
-
-        raw_lost_ids = set(self.track_id_map.keys()) - raw_current_track_ids
-        for raw_id in raw_lost_ids:
-            del self.track_id_map[raw_id]
-
-        self.active_track_ids = final_current_track_ids
         buffer.store_tracks(frame_id, final_tracks)
