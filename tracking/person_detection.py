@@ -14,14 +14,21 @@ class PersonDetector:
         if config.MPS_FALLBACK_ENABLED:
             print("[PersonDetector] MPS fallback enabled for unsupported operations")
 
-    def detect_and_store(self, frame, frame_id, buffer: DataBuffer):
+    def detect_and_store(self, frame: 'np.ndarray', frame_id: int, buffer: DataBuffer):
+        """
+        Detects persons in a frame and stores the detection data (not the frame)
+        in the data buffer.
+        """
         # Pass device explicitly to YOLO inference
         results = self.model(frame, verbose=False, device=self.device)[0]
+        
         persons = []
         for box in results.boxes:
-            cls = int(box.cls.item())
-            if cls == 0:  # Class 0 is 'person'
+            # Filter for 'person' class (class_id=0)
+            if int(box.cls.item()) == 0:
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 conf = float(box.conf.item())
                 persons.append({'bbox': [x1, y1, x2, y2], 'conf': conf})
-        buffer.store_detections(frame_id, frame, persons)
+        
+        # Store only the lightweight detection data, not the full frame
+        buffer.store_detections(frame_id, persons)

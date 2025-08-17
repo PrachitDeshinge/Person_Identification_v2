@@ -1,8 +1,10 @@
+from __future__ import annotations
 from pathlib import Path
 import numpy as np
 import torch
 from boxmot import BoostTrack, ByteTrack
 from utils.data_manager import DataBuffer
+from utils.profiler import PipelineProfiler
 import config
 from typing import Optional
 
@@ -50,47 +52,48 @@ class PersonTracker:
             reid_weights=weights_path,
             device=self.device,
             half=(self.device == 'cuda'),
-            max_age=max_age,
-            min_hits=min_hits,
-            det_thresh=det_thresh,
-            iou_threshold=iou_threshold,
-            lambda_iou=lambda_iou,
-            lambda_mhd=lambda_mhd,
-            lambda_shape=lambda_shape,
-            use_dlo_boost=use_dlo_boost,
-            use_duo_boost=use_duo_boost,
-            dlo_boost_coef=dlo_boost_coef,
-            s_sim_corr=s_sim_corr,
-            use_rich_s=use_rich_s,
-            use_sb=use_sb,
-            use_vt=use_vt,
+            # max_age=max_age,
+            # min_hits=min_hits,
+            # det_thresh=det_thresh,
+            # iou_threshold=iou_threshold,
+            # lambda_iou=lambda_iou,
+            # lambda_mhd=lambda_mhd,
+            # lambda_shape=lambda_shape,
+            # use_dlo_boost=use_dlo_boost,
+            # use_duo_boost=use_duo_boost,
+            # dlo_boost_coef=dlo_boost_coef,
+            # s_sim_corr=s_sim_corr,
+            # use_rich_s=use_rich_s,
+            # use_sb=use_sb,
+            # use_vt=use_vt,
         )
 
-    def update_tracks(self, frame_id, buffer: DataBuffer, profiler):
-        # Prepare detections in BoxMOT format: M x [x1, y1, x2, y2, conf, cls]
+    def update_tracks(self, frame: np.ndarray, frame_id: int, buffer: DataBuffer, profiler: PipelineProfiler):
+        """
+        Updates tracks with new detections for the current frame.
+        The full frame is required by BoostTrack to extract appearance embeddings.
+        """
         detections = buffer.get_detections(frame_id)
-        frame = buffer.get_frame(frame_id)
 
-        dets_for_tracking = []
-        for det in detections:
-            x1, y1, x2, y2 = det['bbox']
-            conf = det['conf']
-            cls = 0  # person class
-            dets_for_tracking.append([x1, y1, x2, y2, conf, cls])
-
-        dets_array = (
-            np.array(dets_for_tracking, dtype=np.float32)
-            if dets_for_tracking else np.empty((0, 6), dtype=np.float32)
-        )
+        if not detections:
+            # If no detections, still update tracker to process existing tracks (e.g., for aging)
+            dets_array = np.empty((0, 6), dtype=np.float32)
+        else:
+            # Prepare detections in BoxMOT format: [x1, y1, x2, y2, conf, cls]
+            dets_for_tracking = [
+                det['bbox'] + [det['conf'], 0] for det in detections  # 0 is person class
+            ]
+            dets_array = np.array(dets_for_tracking, dtype=np.float32)
 
         # Track update; BoxMOT returns M x [x1,y1,x2,y2,id,conf,cls,ind]
         profiler.start("BoxMOT_Update")
+        # The `frame` is crucial here for the ReID model in BoostTrack
         results = self.tracker.update(dets_array, frame)
         profiler.stop("BoxMOT_Update")
 
         final_tracks = []
-        for t in results:
-            x1, y1, x2, y2, track_id = int(t[0]), int(t[1]), int(t[2]), int(t[3]), int(t[4])
-            final_tracks.append([x1, y1, x2, y2, track_id])
+        if results.size > 0:
+            # Extract [x1, y1, x2, y2, track_id]
+            final_tracks = [list(map(int, t[:5])) for t in results]
 
         buffer.store_tracks(frame_id, final_tracks)

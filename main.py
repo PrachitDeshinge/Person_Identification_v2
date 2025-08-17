@@ -1,4 +1,4 @@
-import config  # This will automatically handle MPS fallback setup
+import config
 import cv2
 from tracking.person_detection import PersonDetector
 from tracking.person_tracking import PersonTracker
@@ -8,9 +8,28 @@ import time
 import psutil
 import os
 
-if __name__ == "__main__":
+def main():
     # Input source
     cap = cv2.VideoCapture(config.INPUT_VIDEO)
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Unable to open input video: {config.INPUT_VIDEO}")
+    
+    # --- Video Writer Setup ---
+    video_writer = None
+    if config.OUTPUT_TRACKING_VIDEO:
+        # Get video properties for writer
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        
+        # Define the codec and create VideoWriter object
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Or 'XVID', 'MJPG', etc.
+        video_writer = cv2.VideoWriter(config.OUTPUT_TRACKING_VIDEO, fourcc, fps, (width, height))
+        if video_writer.isOpened():
+            print(f"📹 Saving tracking output to: {config.OUTPUT_TRACKING_VIDEO}")
+        else:
+            print(f"[ERROR] Failed to open video writer for path: {config.OUTPUT_TRACKING_VIDEO}")
+            video_writer = None
 
     detector = PersonDetector()
     tracker = PersonTracker()
@@ -30,7 +49,7 @@ if __name__ == "__main__":
         profiler.stop("Detection")
 
         profiler.start("Tracking")
-        tracker.update_tracks(frame_id, buffer, profiler)
+        tracker.update_tracks(frame, frame_id, buffer, profiler)
         profiler.stop("Tracking")
 
         tracks = buffer.get_tracks(frame_id)
@@ -39,6 +58,10 @@ if __name__ == "__main__":
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
             cv2.putText(frame, f'ID: {track_id}', (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         
+        # Write frame to output video
+        if video_writer:
+            video_writer.write(frame)
+
         # Only show GUI if not in headless mode
         if not config.HEADLESS:
             cv2.imshow("Tracking", frame)
@@ -63,11 +86,20 @@ if __name__ == "__main__":
     print(f"--- End of Memory Usage ---")
 
     cap.release()
+    if video_writer:
+        video_writer.release()
+
     if not config.HEADLESS:
         cv2.destroyAllWindows()
     
     print(f"🎬 Processing completed - {frame_id} frames processed")
+    if config.OUTPUT_TRACKING_VIDEO:
+        print(f"✅ Tracking video saved to: {config.OUTPUT_TRACKING_VIDEO}")
+        
     if config.HEADLESS:
         print("🖥️  Ran in headless mode (no GUI)")
     else:
         print("🖼️  Ran with GUI display")
+
+if __name__ == "__main__":
+    main()
