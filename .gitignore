@@ -34,3 +34,6 @@ __pycache__/
 
 # All type of notebook files
 *.ipynb
+
+# Ignore the temp folder
+temp/
