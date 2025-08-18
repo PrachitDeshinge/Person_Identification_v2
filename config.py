@@ -15,6 +15,17 @@ from __future__ import annotations
 import os
 import torch
 
+U2NET_WEIGHTS_PATH = '../weights/u2net.pth'
+
+# =================================================================================
+# --- U2Net Silhouette Generation Settings ---
+# =================================================================================
+U2NET_BATCH_SIZE = 16  # Larger batch size for better GPU utilization
+U2NET_INPUT_SIZE = 224  # Smaller input size for faster processing (vs 320)
+U2NET_USE_HALF_PRECISION = False  # Disable FP16 for MPS compatibility
+U2NET_MAX_PEOPLE_PER_FRAME = 8  # Skip silhouette if too many people (fallback to bbox)
+
+
 # =================================================================================
 # --- 1. High-Level Controls & I/O (Frequently Modified) ---
 # =================================================================================
@@ -29,9 +40,10 @@ HEADLESS = True  # Set to True for headless mode (no GUI), False for GUI display
 ROOT_DIR = os.path.dirname(__file__)
 INPUT_VIDEO = os.path.join(ROOT_DIR, '../../../../Downloads', 'temp4.mp4')
 OUTPUT_TRACKING_VIDEO = os.path.join(ROOT_DIR, 'tracking_output.mp4') # Set to None to disable saving video
+OUTPUT_SILHOUETTE_VIDEO = os.path.join(ROOT_DIR, 'silhouette_output.mp4') # Set to None to disable saving video
 
 # -- Processing Limits --
-MAX_FRAMES = 800  # Limit processing frames; set to -1 for the full video
+MAX_FRAMES = 200  # Limit processing frames; set to -1 for the full video
 
 
 # =================================================================================
