@@ -81,7 +81,7 @@ class PersonTracker:
         else:
             # Prepare detections in BoxMOT format: [x1, y1, x2, y2, conf, cls]
             dets_for_tracking = [
-                det['bbox'] + [det['conf'], 0] for det in detections  # 0 is person class
+                det['bbox'].tolist() + [det['conf'], 0] for det in detections  # 0 is person class
             ]
             dets_array = np.array(dets_for_tracking, dtype=np.float32)
 

@@ -21,6 +21,7 @@ __pycache__/
 *.pt
 *.ckpt
 *.h5
+*.onnx
 *.weights
 *.DS_Store
 
@@ -37,3 +38,7 @@ __pycache__/
 
 # Ignore the temp folder
 temp/
+
+*.csv
+*.yaml
+*.md

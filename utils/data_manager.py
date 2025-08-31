@@ -12,6 +12,8 @@ class DataBuffer:
     def __init__(self, max_buffer_size: int = 150):
         self.detections: dict[int, list] = {}
         self.tracks: dict[int, list] = {}
+        self.crops: dict[int, list] = {}
+        self.masks: dict[int, list] = {}
         # Keep a buffer to prevent indefinite memory growth. Increased buffer size
         # is acceptable now that full frames are not stored.
         self.max_buffer_size = max_buffer_size
@@ -31,6 +33,22 @@ class DataBuffer:
     def get_tracks(self, frame_id: int) -> list:
         """Retrieves tracking results for a given frame ID."""
         return self.tracks.get(frame_id, [])
+
+    def store_crops(self, frame_id: int, crops: list):
+        """Stores person crops for a given frame ID."""
+        self.crops[frame_id] = crops
+
+    def get_crops(self, frame_id: int) -> list:
+        """Retrieves person crops for a given frame ID."""
+        return self.crops.get(frame_id, [])
+
+    def store_masks(self, frame_id: int, masks: list):
+        """Stores segmentation masks for a given frame ID."""
+        self.masks[frame_id] = masks
+
+    def get_masks(self, frame_id: int) -> list:
+        """Retrieves segmentation masks for a given frame ID."""
+        return self.masks.get(frame_id, [])
 
     def cleanup(self, current_frame_id: int):
         """
@@ -53,3 +71,12 @@ class DataBuffer:
             # Tracks may not exist for every detection frame, so check first
             if k in self.tracks:
                 del self.tracks[k]
+        
+        # Clean up old crops and masks
+        old_crop_keys = [k for k in self.crops if k < cutoff_id]
+        for k in old_crop_keys:
+            del self.crops[k]
+            
+        old_mask_keys = [k for k in self.masks if k < cutoff_id]
+        for k in old_mask_keys:
+            del self.masks[k]

@@ -1,13 +1,37 @@
 import config
 import cv2
+import numpy as np
 from tracking.person_detection import PersonDetector
 from tracking.person_tracking import PersonTracker
-from silhouette.u2net_silhouette import U2NetSilhouetteGenerator
 from utils.data_manager import DataBuffer
 from utils.profiler import PipelineProfiler
 import time
 import psutil
 import os
+
+def generate_silhouette_from_masks(frame, buffer, frame_id):
+    """
+    Generate silhouette mask using the masks stored in the buffer by PersonDetector.
+    """
+    height, width = frame.shape[:2]
+    combined_mask = np.zeros((height, width), dtype=np.uint8)
+    
+    # Get stored masks from buffer
+    masks = buffer.get_masks(frame_id)
+    
+    if masks:
+        for mask in masks:
+            if mask is not None:
+                # Ensure mask is the right size and type
+                if mask.shape != (height, width):
+                    mask_resized = cv2.resize(mask.astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST)
+                else:
+                    mask_resized = mask.astype(np.uint8)
+                
+                # Add to combined mask
+                combined_mask = cv2.bitwise_or(combined_mask, mask_resized * 255)
+    
+    return combined_mask
 
 def main():
     # Input source
@@ -42,7 +66,6 @@ def main():
 
     detector = PersonDetector()
     tracker = PersonTracker()
-    silhouette_generator = U2NetSilhouetteGenerator()
     buffer = DataBuffer()
     profiler = PipelineProfiler()
 
@@ -64,10 +87,11 @@ def main():
 
         tracks = buffer.get_tracks(frame_id)
         
+        # Generate silhouette from stored masks
         profiler.start("Silhouette")
-        silhouette_mask = silhouette_generator.generate_silhouette(frame, tracks)
+        silhouette_mask = generate_silhouette_from_masks(frame, buffer, frame_id)
         profiler.stop("Silhouette")
-
+        
         # --- Visualization ---
         
         # Draw tracking info on the original frame
@@ -98,6 +122,9 @@ def main():
 
         buffer.cleanup(frame_id)
         frame_id += 1
+
+    # Flush any remaining batches
+    detector.flush_batch(buffer)
 
     profiler.end_frame_processing(frame_id)
     print(profiler.get_summary())
